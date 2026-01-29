@@ -1,3 +1,4 @@
+
 # Voice Everlast – Desktop Voice Workflow
 
 Voice Everlast ist eine Desktop-App, die gesprochene Gedanken in strukturierte, direkt nutzbare Ergebnisse verwandelt.  
@@ -167,3 +168,5 @@ Er wird ausschließlich lokal auf dem Rechner gespeichert (localStorage).
 
 
 ## Feedback gerne an: max.moench@gmx.de 
+
+
