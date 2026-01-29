@@ -153,7 +153,7 @@ Beim ersten Start kann der API Key direkt in der App eingegeben werden.
 Er wird ausschließlich lokal auf dem Rechner gespeichert (localStorage).
 
 - Für eine produktive Version könnte die Speicherung später in eine OS-Keychain verlagert werden.
-- Feedback gerne an: max.moench@gmxde 
+
 ---
 
 ## Ausblick/Roadmap 
