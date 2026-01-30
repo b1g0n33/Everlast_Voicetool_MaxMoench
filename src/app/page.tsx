@@ -78,6 +78,16 @@ function isTypingTarget(el: EventTarget | null) {
   return false;
 }
 
+/** ✅ Fix: remove whitespace + invisible chars */
+function normalizeKey(raw: string) {
+  return (raw ?? "").replace(/\u200B/g, "").trim(); // \u200B = zero-width space
+}
+
+/** ✅ UX validation: treat garbage/placeholder as "missing" */
+function isLikelyOpenAIKey(key: string) {
+  return /^sk-[A-Za-z0-9_-]{10,}/.test(key);
+}
+
 export default function Page() {
   const [status, setStatus] = useState<Status>("bereit");
   const [mode, setMode] = useState<Mode>("smart_note");
@@ -95,18 +105,23 @@ export default function Page() {
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
 
-  // ✅ Wichtig: finaler Text-Puffer als REF (damit Reset wirklich alles leert)
+  // ✅ finaler Text-Puffer als REF (damit Reset wirklich alles leert)
   const finalTextRef = useRef("");
 
-  const keyMissing = !apiKey.trim();
+  // ✅ Fix: now uses normalized key
+  const keyMissing = !normalizeKey(apiKey);
 
   useEffect(() => {
     try {
-      const savedKey = localStorage.getItem("OPENAI_KEY") ?? "";
+      const savedKeyRaw = localStorage.getItem("OPENAI_KEY") ?? "";
+      const savedKey = normalizeKey(savedKeyRaw);
+
       const savedHotkey = localStorage.getItem("HOTKEY") ?? "Ctrl+Shift+Space";
       const savedEnabled = (localStorage.getItem("HOTKEY_ENABLED") ?? "true") === "true";
 
-      setApiKey(savedKey);
+      // ✅ only accept likely keys; otherwise treat as empty
+      setApiKey(isLikelyOpenAIKey(savedKey) ? savedKey : "");
+
       setHotkey(savedHotkey);
       setHotkeyEnabled(savedEnabled);
 
@@ -115,17 +130,22 @@ export default function Page() {
   }, []);
 
   function saveKey(v: string) {
-    setApiKey(v);
+    const cleaned = normalizeKey(v);
+    setApiKey(cleaned);
+
     try {
-      localStorage.setItem("OPENAI_KEY", v);
+      if (cleaned) localStorage.setItem("OPENAI_KEY", cleaned);
+      else localStorage.removeItem("OPENAI_KEY");
     } catch {}
   }
+
   function saveHotkey(v: string) {
     setHotkey(v);
     try {
       localStorage.setItem("HOTKEY", v);
     } catch {}
   }
+
   function saveHotkeyEnabled(v: boolean) {
     setHotkeyEnabled(v);
     try {
@@ -159,7 +179,6 @@ export default function Page() {
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
-    // ✅ initialisieren
     finalTextRef.current = "";
 
     rec.onresult = (event: any) => {
@@ -203,7 +222,6 @@ export default function Page() {
     setResult(null);
     setCopied(null);
 
-    // ✅ ganz wichtig: Buffer resetten
     finalTextRef.current = "";
 
     setStatus("hoert_zu");
@@ -229,7 +247,6 @@ export default function Page() {
     }
   }
 
-  // ✅ Reset: nur Arbeitsdaten zurücksetzen (Transkript + Output + Error), NICHT Settings
   function reset() {
     setError("");
     setText("");
@@ -237,10 +254,8 @@ export default function Page() {
     setCopied(null);
     setStatus("bereit");
 
-    // ✅ Buffer reset
     finalTextRef.current = "";
 
-    // ✅ harte Beendigung, damit nichts "nachtröpfelt"
     try {
       isListeningRef.current = false;
       recognitionRef.current?.abort?.();
@@ -257,7 +272,7 @@ export default function Page() {
 
     try {
       const data = (await invoke("enrich", {
-        apiKey: apiKey,
+        apiKey: normalizeKey(apiKey), // ✅ always send cleaned key
         text,
         mode,
       })) as any;
@@ -294,7 +309,7 @@ export default function Page() {
   }
 
   const canProcess =
-    !!text.trim() && !!apiKey.trim() && status !== "hoert_zu" && status !== "verarbeitet";
+    !!text.trim() && !!normalizeKey(apiKey) && status !== "hoert_zu" && status !== "verarbeitet";
 
   const statusLabel = useMemo(() => {
     if (status === "bereit") return "Bereit";
@@ -387,7 +402,7 @@ export default function Page() {
                 <option value="smart_note">Smart Note</option>
                 <option value="tasks">Aufgaben</option>
                 <option value="meeting_minutes">Meeting-Notizen</option>
-                <option value="email">E-Mail Entwurf</option>
+                <option value="email">E-Mail-Entwurf</option>
               </select>
 
               <button
@@ -412,7 +427,7 @@ export default function Page() {
                 className="rounded-xl bg-white/10 border border-white/15 px-5 py-3 text-sm text-white/85 disabled:opacity-40"
                 onClick={enrich}
                 disabled={!canProcess}
-                title={!apiKey.trim() ? "Setze zuerst einen API-Key in den Einstellungen" : "Ctrl+Enter"}
+                title={!normalizeKey(apiKey) ? "Setze zuerst einen API-Key in den Einstellungen" : "Ctrl+Enter"}
               >
                 Transkript verarbeiten
               </button>
@@ -487,19 +502,18 @@ export default function Page() {
         </div>
 
         <div className="mt-4 text-xs text-white/40 leading-relaxed space-y-1">
-  <div>
-    <span className="text-white/60 font-medium">Tastenkürzel:</span>{" "}
-    <span className="text-white/70">Enter</span> = Aufnahme starten / stoppen ·{" "}
-    <span className="text-white/70">Ctrl + Enter</span> = Transkript verarbeiten ·{" "}
-    <span className="text-white/70">Esc</span> = Aufnahme abbrechen oder Einstellungen schließen
-  </div>
+          <div>
+            <span className="text-white/60 font-medium">Tastenkürzel:</span>{" "}
+            <span className="text-white/70">Enter</span> = Aufnahme starten / stoppen ·{" "}
+            <span className="text-white/70">Ctrl + Enter</span> = Transkript verarbeiten ·{" "}
+            <span className="text-white/70">Esc</span> = Aufnahme abbrechen oder Einstellungen schließen
+          </div>
 
-  <div>
-    <span className="text-white/60 font-medium">Globaler Hotkey:</span>{" "}
-    <span className="text-white/70">Ctrl + Shift + Space</span> = App ein-/ausblenden
-  </div>
-</div>
-
+          <div>
+            <span className="text-white/60 font-medium">Globaler Hotkey:</span>{" "}
+            <span className="text-white/70">Ctrl + Shift + Space</span> = App ein-/ausblenden
+          </div>
+        </div>
 
         <Modal open={settingsOpen} title="Einstellungen" onClose={() => setSettingsOpen(false)}>
           <div className="space-y-5">
@@ -513,6 +527,9 @@ export default function Page() {
                 placeholder="sk-..."
                 className="w-full rounded-xl bg-neutral-900/80 text-white border border-white/15 px-4 py-3 text-sm outline-none focus:border-white/30"
               />
+              <div className="text-xs text-white/45">
+                Hinweis: Ohne gültigen API-Key kann kein Output erzeugt werden.
+              </div>
             </div>
 
             <div className="space-y-2">
